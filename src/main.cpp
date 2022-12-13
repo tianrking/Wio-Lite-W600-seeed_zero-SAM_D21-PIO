@@ -9,7 +9,8 @@
 #include <Wire.h>
 #endif
 
-U8G2_SSD1306_128X64_ALT0_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE); 
+// U8G2_SSD1306_128X64_ALT0_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ U8X8_PIN_NONE); 
+U8G2_SSD1306_128X64_NONAME_F_SW_I2C u8g2(U8G2_R0, /* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // All Boards without Reset of the Display
 
 void setup() {
 
@@ -26,11 +27,18 @@ void loop() {
     delay(1000);
     digitalWrite(D5, LOW);
     delay(1000);
-    u8g2.clearBuffer();                   // clear the internal memory
-    u8g2.setFont(u8g2_font_ncenB08_tr);   // choose a suitable font
-    u8g2.drawStr(0,10,"Hello World!");    // write something to the internal memory
-    u8g2.sendBuffer();                    // transfer internal memory to the display
-    delay(1000);  
+
+    // u8g2.clearBuffer();                   // clear the internal memory
+    // u8g2.setFont(u8g2_font_ncenB08_tr);   // choose a suitable font
+    // u8g2.drawStr(0,10,"Hello World!");    // write something to the internal memory
+    // u8g2.sendBuffer();                    // transfer internal memory to the display
+    u8g2.clearBuffer();
+    u8g2.setFont(u8g2_font_ncenB08_tr);
+    u8g2.drawStr(32,30,"Hello \n");
+    u8g2.drawStr(32,45,"World!");
+    u8g2.sendBuffer(); 
     
+    delay(1000);  
+
 }
 
