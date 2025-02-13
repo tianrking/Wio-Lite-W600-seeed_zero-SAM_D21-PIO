@@ -127,18 +127,21 @@ void lvglTask(void *pvParameters) {
         lv_obj_t* name_label;   // Label for the stock name
         lv_obj_t* price_label;  // Label for the price
         lv_obj_t* change_label; // Label for the price change
-        int value;            // Current stock value (NOW INTEGER)
-        int prev_value;       // Previous value (NOW INTEGER)
-        int min_val;          // Minimum random value (NOW INTEGER)
-        int max_val;          // Maximum random value (NOW INTEGER)
+        lv_obj_t* container;    // Container for background/border
+        lv_obj_t* dynamic_price_label; // *Separate* label for the dynamic price number
+        lv_obj_t* dynamic_change_label;// *Separate* label for the dynamic change number
+        int value;            // Current stock value (INTEGER)
+        int prev_value;       // Previous value (INTEGER)
+        int min_val;          // Minimum random value (INTEGER)
+        int max_val;          // Maximum random value (INTEGER)
     };
 
     // Stock data array (within the task) - INTEGER values now
     StockData stocks[] = {
-        {"Apple", NULL, NULL, NULL, 0, 0, 150, 180},
-        {"Tesla", NULL, NULL, NULL, 0, 0, 600, 900},
-        {"Alibaba", NULL, NULL, NULL, 0, 0, 80, 120},
-        {"Meta", NULL, NULL, NULL, 0, 0, 250, 350}
+        {"Apple", NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 150, 180},
+        {"Tesla", NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 600, 900},
+        {"Alibaba", NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 80, 120},
+        {"Meta", NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 250, 350}
     };
     const int num_stocks = sizeof(stocks) / sizeof(stocks[0]);
 
@@ -150,38 +153,56 @@ void lvglTask(void *pvParameters) {
         int container_height = screen_height / 2;
         int label_height = 20; // Approximate height of each label
 
-        lv_obj_t* containers[4]; // Array to hold the containers
         for (int i = 0; i < num_stocks; i++) {
             // 1. Create containers
-            containers[i] = lv_obj_create(lv_scr_act(), NULL);
-            lv_obj_set_size(containers[i], container_width, container_height);
+            stocks[i].container = lv_obj_create(lv_scr_act(), NULL);
+            lv_obj_set_size(stocks[i].container, container_width, container_height);
+
+            // Set default background color (light gray) and white border
+            lv_obj_set_style_local_bg_color(stocks[i].container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xD3D3D3)); // Light Gray
+            lv_obj_set_style_local_border_color(stocks[i].container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE); // White border
+            lv_obj_set_style_local_border_width(stocks[i].container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 2);  // Border width
+            lv_obj_set_style_local_border_opa(stocks[i].container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_OPA_COVER); // Make border fully opaque
 
             // 2. Position containers
             if (i == 0) {
-                lv_obj_align(containers[i], NULL, LV_ALIGN_IN_TOP_LEFT, 0, 0);
+                lv_obj_align(stocks[i].container, NULL, LV_ALIGN_IN_TOP_LEFT, 0, 0);
             } else if (i == 1) {
-                lv_obj_align(containers[i], NULL, LV_ALIGN_IN_TOP_RIGHT, 0, 0);
+                lv_obj_align(stocks[i].container, NULL, LV_ALIGN_IN_TOP_RIGHT, 0, 0);
             } else if (i == 2) {
-                lv_obj_align(containers[i], NULL, LV_ALIGN_IN_BOTTOM_LEFT, 0, 0);
+                lv_obj_align(stocks[i].container, NULL, LV_ALIGN_IN_BOTTOM_LEFT, 0, 0);
             } else {
-                lv_obj_align(containers[i], NULL, LV_ALIGN_IN_BOTTOM_RIGHT, 0, 0);
+                lv_obj_align(stocks[i].container, NULL, LV_ALIGN_IN_BOTTOM_RIGHT, 0, 0);
             }
 
             // 3. Create labels *inside* the container
-            // Name Label
-            stocks[i].name_label = lv_label_create(containers[i], NULL);
+            // Name Label (Black)
+            stocks[i].name_label = lv_label_create(stocks[i].container, NULL);
             lv_obj_align(stocks[i].name_label, NULL, LV_ALIGN_IN_TOP_LEFT, 5, 5); // Top-left, with padding
             lv_label_set_text(stocks[i].name_label, stocks[i].name);
+            lv_obj_set_style_local_text_color(stocks[i].name_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK); // Set text color to black
 
-            // Price Label - Initialize with a valid INT value!
-            stocks[i].price_label = lv_label_create(containers[i], NULL);
+            // Price Label -  static part
+            stocks[i].price_label = lv_label_create(stocks[i].container, NULL);
             lv_obj_align(stocks[i].price_label, NULL, LV_ALIGN_IN_TOP_LEFT, 5, 5 + label_height); // Below name
-            lv_label_set_text_fmt(stocks[i].price_label, "Price: %d", stocks[i].min_val);  // Initial value, %d for int
+            lv_label_set_text(stocks[i].price_label, "Price: "); // Static part ONLY
+            lv_obj_set_style_local_text_color(stocks[i].price_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK); // Set *static* part to BLACK
 
-            // Change Label - Initialize with 0
-            stocks[i].change_label = lv_label_create(containers[i], NULL);
+            // Change Label - static part
+            stocks[i].change_label = lv_label_create(stocks[i].container, NULL);
             lv_obj_align(stocks[i].change_label, NULL, LV_ALIGN_IN_TOP_LEFT, 5, 5 + 2 * label_height); // Below price
-            lv_label_set_text_fmt(stocks[i].change_label, "Change: %d", 0); // Initial value 0, %d for int
+            lv_label_set_text(stocks[i].change_label, "Change: "); // Static part ONLY
+            lv_obj_set_style_local_text_color(stocks[i].change_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK); // Set *static* part to BLACK
+
+            // Create dynamic labels *NOW*, and store their pointers.
+            stocks[i].dynamic_price_label = lv_label_create(stocks[i].container, NULL);
+            lv_obj_align(stocks[i].dynamic_price_label, stocks[i].price_label, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
+            lv_label_set_text(stocks[i].dynamic_price_label, ""); // Initialize as empty
+
+            stocks[i].dynamic_change_label = lv_label_create(stocks[i].container, NULL);
+            lv_obj_align(stocks[i].dynamic_change_label, stocks[i].change_label, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
+            lv_label_set_text(stocks[i].dynamic_change_label, ""); // Initialize as empty
+
 
             // Set initial previous value
             stocks[i].prev_value = stocks[i].min_val;
@@ -189,57 +210,51 @@ void lvglTask(void *pvParameters) {
         xSemaphoreGive(lvglMutex);
     }
 
-    // Function to update stock values using standard C rand()
+    // Function to update stock values
       auto update_stock_values = [&]() {
           for (int i = 0; i < num_stocks; i++) {
-              // Store previous value
               stocks[i].prev_value = stocks[i].value;
-
-              // Generate a random *integer* within the defined range
-              int range = stocks[i].max_val - stocks[i].min_val + 1; // +1 to include max_val
-              stocks[i].value = stocks[i].min_val + (rand() % range); // Use modulo operator
+              int range = stocks[i].max_val - stocks[i].min_val + 1;
+              stocks[i].value = stocks[i].min_val + (rand() % range);
           }
       };
 
-
     unsigned long last_update = 0;
-    // Initialize random seed *outside* the loop
     srand(millis());
 
     while (1) {
-        // Handle LVGL tasks.
         if (xSemaphoreTake(lvglMutex, portMAX_DELAY) == pdTRUE) {
             lv_task_handler();
             xSemaphoreGive(lvglMutex);
         }
 
-        // Update stock values every second
         if (millis() - last_update >= 1000) {
             last_update = millis();
-
-            // 1. Calculate new values (OUTSIDE the LVGL mutex)
             update_stock_values();
 
-            // 2. Update the display (INSIDE the LVGL mutex)
             if (xSemaphoreTake(lvglMutex, portMAX_DELAY) == pdTRUE) {
                 for (int i = 0; i < num_stocks; i++) {
-                    // Calculate the change
-                    int change = stocks[i].value - stocks[i].prev_value;  // Now an integer
-                    // Determine color based on change (green for positive, red for negative)
-                    lv_color_t change_color = (change >= 0) ? LV_COLOR_MAKE(0, 255, 0) : LV_COLOR_MAKE(255, 0, 0); // Green or Red
+                    int change = stocks[i].value - stocks[i].prev_value;
 
-                     // Update labels (using lv_label_set_text_fmt for formatted text)
-                    lv_label_set_text_fmt(stocks[i].price_label, "Price: %d", stocks[i].value);  // %d for integers
-                    lv_label_set_text_fmt(stocks[i].change_label, "Change: %d", change);      // %d for integers
+                    // Colors for the *dynamic* number parts:
+                    lv_color_t price_change_color = (change >= 0) ? LV_COLOR_RED : LV_COLOR_GREEN;
+                    lv_color_t change_color = (change >= 0) ? LV_COLOR_GREEN : LV_COLOR_RED;
 
-                    // Set label colors.
-                    lv_obj_set_style_local_text_color(stocks[i].change_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, change_color);
+                    // --- Update labels:  Only the dynamic parts! ---
+
+                    // Set the text of the *dynamic* labels:
+                    lv_label_set_text_fmt(stocks[i].dynamic_price_label, "%d", stocks[i].value);
+                    lv_label_set_text_fmt(stocks[i].dynamic_change_label, "%d", change);
+
+                    // Set the *color* of the dynamic labels:
+                    lv_obj_set_style_local_text_color(stocks[i].dynamic_price_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, price_change_color);
+                    lv_obj_set_style_local_text_color(stocks[i].dynamic_change_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, change_color);
                 }
                 xSemaphoreGive(lvglMutex);
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(20)); // Yield
+        vTaskDelay(pdMS_TO_TICKS(20));
     }
 }
 
