@@ -1,0 +1,166 @@
+#include <Seeed_Arduino_FreeRTOS.h>
+#include "TFT_eSPI.h" //include TFT LCD library
+
+// Select the serial port
+#define Terminal Serial
+
+// Global variables for FreeRTOS
+TaskHandle_t Handle_aTask;
+TaskHandle_t Handle_bTask;
+TaskHandle_t Handle_monitorTask;
+TaskHandle_t Handle_displayTask;
+
+// TFT LCD object
+TFT_eSPI tft;
+
+// Mutex to protect TFT access (important for thread safety)
+SemaphoreHandle_t tftMutex;
+
+//*****************************************************************
+// Thread A: Prints 'A' with a delay
+//*****************************************************************
+static void threadA(void* pvParameters) {
+    Terminal.println("Thread A: Started");
+    for (int x = 0; x < 20; ++x) {
+        Terminal.print("A");
+        vTaskDelay(pdMS_TO_TICKS(500)); // Use FreeRTOS delay
+    }
+    Terminal.println("Thread A: Deleting");
+    vTaskDelete(NULL);
+}
+
+//*****************************************************************
+// Thread B: Prints "B" with a delay
+//*****************************************************************
+static void threadB(void* pvParameters) {
+    Terminal.println("Thread B: Started");
+    while (1) {
+        Terminal.println("B");
+        vTaskDelay(pdMS_TO_TICKS(2000)); // Use FreeRTOS delay
+    }
+}
+
+//*****************************************************************
+// Task Monitor: Prints task stack information
+//*****************************************************************
+void taskMonitor(void* pvParameters) {
+    int x;
+    int measurement;
+
+    Terminal.println("Task Monitor: Started");
+
+    for (x = 0; x < 10; ++x) {
+        Terminal.println("");
+        Terminal.println("******************************");
+        Terminal.println("[Stacks Free Bytes Remaining] ");
+
+        measurement = uxTaskGetStackHighWaterMark(Handle_aTask);
+        Terminal.print("Thread A: ");
+        Terminal.println(measurement);
+
+        measurement = uxTaskGetStackHighWaterMark(Handle_bTask);
+        Terminal.print("Thread B: ");
+        Terminal.println(measurement);
+
+        measurement = uxTaskGetStackHighWaterMark(Handle_monitorTask);
+        Terminal.print("Monitor Stack: ");
+        Terminal.println(measurement);
+        
+        measurement = uxTaskGetStackHighWaterMark(Handle_displayTask);
+        Terminal.print("Display Task: ");
+        Terminal.println(measurement);
+
+
+        Terminal.println("******************************");
+
+        vTaskDelay(pdMS_TO_TICKS(10000)); // Use FreeRTOS delay
+    }
+    Terminal.println("Task Monitor: Deleting");
+    vTaskDelete(NULL);
+}
+
+//*****************************************************************
+// Display Task:  Handles TFT display updates
+//*****************************************************************
+void displayTask(void* pvParameters) {
+    Terminal.println("Display Task: Started");
+
+    // Initialize the display (do this *inside* a task)
+    if (xSemaphoreTake(tftMutex, portMAX_DELAY) == pdTRUE) {  // Acquire mutex
+        tft.begin();
+        tft.setRotation(3);
+        tft.fillScreen(TFT_RED);
+        tft.setTextColor(TFT_BLACK);
+        tft.setTextSize(4);
+        tft.drawString("Hello world!", 0, 0);
+        xSemaphoreGive(tftMutex); // Release mutex
+    }
+   
+   int counter = 0;
+    while (1) {
+        // Acquire the mutex before accessing the TFT
+        if (xSemaphoreTake(tftMutex, portMAX_DELAY) == pdTRUE) {
+             tft.fillScreen(TFT_RED); // Clear previous display
+             tft.setTextColor(TFT_WHITE);  // Set text color
+             tft.setTextSize(3);       // Set a reasonable text size
+             tft.setCursor(0, 0);       // Reset cursor position
+
+             tft.print("Counter: ");
+             tft.println(counter);
+
+             // Display task stack usage (demonstrates thread-safe TFT access)
+             int stack_remaining = uxTaskGetStackHighWaterMark(NULL); // Get *current* task's stack
+             tft.print("Stack: ");
+             tft.print(stack_remaining);
+             tft.println(" bytes");
+
+            // You could add more display updates here,
+            //  as long as they are all within this mutex-protected block.
+
+            xSemaphoreGive(tftMutex); // *Always* release the mutex
+        }
+        counter++;
+        vTaskDelay(pdMS_TO_TICKS(500)); // Update display every 500ms
+    }
+}
+
+
+//*****************************************************************
+// Setup function
+//*****************************************************************
+void setup() {
+    Terminal.begin(115200);
+    while (!Terminal);
+    delay(1000);  //  prevent usb driver crash
+
+    Terminal.println("");
+    Terminal.println("******************************");
+    Terminal.println("        Program start         ");
+    Terminal.println("******************************");
+    
+    // Create the mutex *before* creating tasks that use it.
+    tftMutex = xSemaphoreCreateMutex();
+    if (tftMutex == NULL) {
+        Terminal.println("Failed to create mutex!");
+        while(1);  // Fatal error
+    }
+
+
+    // Create the threads
+    xTaskCreate(threadA,     "Task A",       256, NULL, tskIDLE_PRIORITY + 3, &Handle_aTask);
+    xTaskCreate(threadB,     "Task B",       256, NULL, tskIDLE_PRIORITY + 2, &Handle_bTask);
+    xTaskCreate(taskMonitor, "Task Monitor", 256, NULL, tskIDLE_PRIORITY + 1, &Handle_monitorTask);
+    xTaskCreate(displayTask, "Display Task", 512, NULL, tskIDLE_PRIORITY + 4, &Handle_displayTask); // Display task gets highest priority and larger stack
+
+
+    // Start the RTOS scheduler
+    vTaskStartScheduler();
+
+    // Should never reach here
+    while (1);
+}
+
+//*****************************************************************
+// loop() is not used in this FreeRTOS example
+//*****************************************************************
+void loop() {}
