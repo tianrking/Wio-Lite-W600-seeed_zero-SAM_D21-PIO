@@ -257,7 +257,6 @@ void lvglTask(void *pvParameters) {
     }
 }
 
-
 //*****************************************************************
 //  Task Monitor: Prints task stack information (Optional, but useful)
 //*****************************************************************
