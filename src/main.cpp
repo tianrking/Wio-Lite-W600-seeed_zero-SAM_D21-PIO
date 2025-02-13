@@ -88,8 +88,17 @@ bool read_encoder(lv_indev_drv_t * indev, lv_indev_data_t * data)
 //*****************************************************************
 // LVGL Task: Handles all LVGL related operations
 //*****************************************************************
-void lvglTask(void *pvParameters) {
+// Function to format a float value into a string with correct decimal representation
+void format_float(float value, char* buffer, int buffer_size) {
+    int integer_part = (int)value;  // Get the integer part
+    float fractional_part = value - integer_part;  // Get the fractional part
+    int fractional_int = (int)(fractional_part * 100);  // Convert fractional part to an integer (2 decimal places)
 
+    // Format the integer and fractional part as a string with a dot in between
+    snprintf(buffer, buffer_size, "%d.%02d", integer_part, fractional_int);
+}
+
+void lvglTask(void *pvParameters) {
     // Initialize LVGL *within* the task.
     lv_init();
 
@@ -120,28 +129,25 @@ void lvglTask(void *pvParameters) {
     lv_indev_drv_register(&indev_drv);
 
     // --- Stock Data and Display Setup ---
-
-    // Structure to hold stock data (within the task)
     struct StockData {
         const char* name;
-        lv_obj_t* name_label;   // Label for the stock name
-        lv_obj_t* price_label;  // Label for the price
-        lv_obj_t* change_label; // Label for the price change
-        lv_obj_t* container;    // Container for background/border
-        lv_obj_t* dynamic_price_label; // *Separate* label for the dynamic price number
-        lv_obj_t* dynamic_change_label;// *Separate* label for the dynamic change number
-        int value;            // Current stock value (INTEGER)
-        int prev_value;       // Previous value (INTEGER)
-        int min_val;          // Minimum random value (INTEGER)
-        int max_val;          // Maximum random value (INTEGER)
+        lv_obj_t* name_label;
+        lv_obj_t* price_label;
+        lv_obj_t* change_label;
+        lv_obj_t* container;
+        lv_obj_t* dynamic_price_label;
+        lv_obj_t* dynamic_change_label;
+        float value;
+        float prev_value;
+        float min_val;
+        float max_val;
     };
 
-    // Stock data array (within the task) - INTEGER values now
     StockData stocks[] = {
-        {"Apple", NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 150, 180},
-        {"Tesla", NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 600, 900},
-        {"Alibaba", NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 80, 120},
-        {"Meta", NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 250, 350}
+        {"Apple", NULL, NULL, NULL, NULL, NULL, NULL, 0.0f, 0.0f, 150.0f, 180.0f},
+        {"Tesla", NULL, NULL, NULL, NULL, NULL, NULL, 0.0f, 0.0f, 600.0f, 900.0f},
+        {"Alibaba", NULL, NULL, NULL, NULL, NULL, NULL, 0.0f, 0.0f, 80.0f, 120.0f},
+        {"Meta", NULL, NULL, NULL, NULL, NULL, NULL, 0.0f, 0.0f, 250.0f, 350.0f}
     };
     const int num_stocks = sizeof(stocks) / sizeof(stocks[0]);
 
@@ -157,8 +163,6 @@ void lvglTask(void *pvParameters) {
             // 1. Create containers
             stocks[i].container = lv_obj_create(lv_scr_act(), NULL);
             lv_obj_set_size(stocks[i].container, container_width, container_height);
-
-            // Set default background color (light gray) and white border
             lv_obj_set_style_local_bg_color(stocks[i].container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, lv_color_hex(0xD3D3D3)); // Light Gray
             lv_obj_set_style_local_border_color(stocks[i].container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_WHITE); // White border
             lv_obj_set_style_local_border_width(stocks[i].container, LV_OBJ_PART_MAIN, LV_STATE_DEFAULT, 2);  // Border width
@@ -176,48 +180,41 @@ void lvglTask(void *pvParameters) {
             }
 
             // 3. Create labels *inside* the container
-            // Name Label (Black)
             stocks[i].name_label = lv_label_create(stocks[i].container, NULL);
-            lv_obj_align(stocks[i].name_label, NULL, LV_ALIGN_IN_TOP_LEFT, 5, 5); // Top-left, with padding
+            lv_obj_align(stocks[i].name_label, NULL, LV_ALIGN_IN_TOP_LEFT, 5, 5);
             lv_label_set_text(stocks[i].name_label, stocks[i].name);
-            lv_obj_set_style_local_text_color(stocks[i].name_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK); // Set text color to black
+            lv_obj_set_style_local_text_color(stocks[i].name_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK);
 
-            // Price Label -  static part
             stocks[i].price_label = lv_label_create(stocks[i].container, NULL);
-            lv_obj_align(stocks[i].price_label, NULL, LV_ALIGN_IN_TOP_LEFT, 5, 5 + label_height); // Below name
-            lv_label_set_text(stocks[i].price_label, "Price: "); // Static part ONLY
-            lv_obj_set_style_local_text_color(stocks[i].price_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK); // Set *static* part to BLACK
+            lv_obj_align(stocks[i].price_label, NULL, LV_ALIGN_IN_TOP_LEFT, 5, 5 + label_height);
+            lv_label_set_text(stocks[i].price_label, "Price: ");
+            lv_obj_set_style_local_text_color(stocks[i].price_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK);
 
-            // Change Label - static part
             stocks[i].change_label = lv_label_create(stocks[i].container, NULL);
-            lv_obj_align(stocks[i].change_label, NULL, LV_ALIGN_IN_TOP_LEFT, 5, 5 + 2 * label_height); // Below price
-            lv_label_set_text(stocks[i].change_label, "Change: "); // Static part ONLY
-            lv_obj_set_style_local_text_color(stocks[i].change_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK); // Set *static* part to BLACK
+            lv_obj_align(stocks[i].change_label, NULL, LV_ALIGN_IN_TOP_LEFT, 5, 5 + 2 * label_height);
+            lv_label_set_text(stocks[i].change_label, "Change: ");
+            lv_obj_set_style_local_text_color(stocks[i].change_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, LV_COLOR_BLACK);
 
-            // Create dynamic labels *NOW*, and store their pointers.
             stocks[i].dynamic_price_label = lv_label_create(stocks[i].container, NULL);
             lv_obj_align(stocks[i].dynamic_price_label, stocks[i].price_label, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
-            lv_label_set_text(stocks[i].dynamic_price_label, ""); // Initialize as empty
+            lv_label_set_text(stocks[i].dynamic_price_label, "");
 
             stocks[i].dynamic_change_label = lv_label_create(stocks[i].container, NULL);
             lv_obj_align(stocks[i].dynamic_change_label, stocks[i].change_label, LV_ALIGN_OUT_RIGHT_MID, 0, 0);
-            lv_label_set_text(stocks[i].dynamic_change_label, ""); // Initialize as empty
+            lv_label_set_text(stocks[i].dynamic_change_label, "");
 
-
-            // Set initial previous value
             stocks[i].prev_value = stocks[i].min_val;
         }
         xSemaphoreGive(lvglMutex);
     }
 
-    // Function to update stock values
-      auto update_stock_values = [&]() {
-          for (int i = 0; i < num_stocks; i++) {
-              stocks[i].prev_value = stocks[i].value;
-              int range = stocks[i].max_val - stocks[i].min_val + 1;
-              stocks[i].value = stocks[i].min_val + (rand() % range);
-          }
-      };
+    auto update_stock_values = [&]() {
+        for (int i = 0; i < num_stocks; i++) {
+            stocks[i].prev_value = stocks[i].value;
+            float range = stocks[i].max_val - stocks[i].min_val;
+            stocks[i].value = stocks[i].min_val + (range * ((float)rand() / (float)RAND_MAX));
+        }
+    };
 
     unsigned long last_update = 0;
     srand(millis());
@@ -234,19 +231,21 @@ void lvglTask(void *pvParameters) {
 
             if (xSemaphoreTake(lvglMutex, portMAX_DELAY) == pdTRUE) {
                 for (int i = 0; i < num_stocks; i++) {
-                    int change = stocks[i].value - stocks[i].prev_value;
+                    float change = (stocks[i].value - stocks[i].prev_value) / stocks[i].prev_value * 100.0f;
 
-                    // Colors for the *dynamic* number parts:
                     lv_color_t price_change_color = (change >= 0) ? LV_COLOR_RED : LV_COLOR_GREEN;
                     lv_color_t change_color = (change >= 0) ? LV_COLOR_GREEN : LV_COLOR_RED;
 
-                    // --- Update labels:  Only the dynamic parts! ---
+                    // Update labels using the new format_float function
+                    char price_str[20];
+                    char change_str[20];
 
-                    // Set the text of the *dynamic* labels:
-                    lv_label_set_text_fmt(stocks[i].dynamic_price_label, "%d", stocks[i].value);
-                    lv_label_set_text_fmt(stocks[i].dynamic_change_label, "%d", change);
+                    format_float(stocks[i].value, price_str, sizeof(price_str));
+                    format_float(change, change_str, sizeof(change_str));
 
-                    // Set the *color* of the dynamic labels:
+                    lv_label_set_text(stocks[i].dynamic_price_label, price_str);
+                    lv_label_set_text(stocks[i].dynamic_change_label, change_str);
+
                     lv_obj_set_style_local_text_color(stocks[i].dynamic_price_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, price_change_color);
                     lv_obj_set_style_local_text_color(stocks[i].dynamic_change_label, LV_LABEL_PART_MAIN, LV_STATE_DEFAULT, change_color);
                 }
@@ -254,9 +253,10 @@ void lvglTask(void *pvParameters) {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(20));
+        vTaskDelay(pdMS_TO_TICKS(20)); // Yield
     }
 }
+
 
 //*****************************************************************
 //  Task Monitor: Prints task stack information (Optional, but useful)
