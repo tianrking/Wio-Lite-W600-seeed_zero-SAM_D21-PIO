@@ -90,13 +90,12 @@ bool read_encoder(lv_indev_drv_t * indev, lv_indev_data_t * data)
 //*****************************************************************
 void lvglTask(void *pvParameters) {
 
-    // Initialize LVGL *within* the task, after the mutex is created.
+    // Initialize LVGL *within* the task.
     lv_init();
 
     #if USE_LV_LOG != 0
-        lv_log_register_print_cb(my_print); /* register print function for debugging */
+        lv_log_register_print_cb(my_print);
     #endif
-
 
     if (xSemaphoreTake(tftMutex, portMAX_DELAY) == pdTRUE) {
         tft.begin();
@@ -104,10 +103,8 @@ void lvglTask(void *pvParameters) {
         xSemaphoreGive(tftMutex);
     }
 
-    // Use a reasonable buffer size. 1/10th or 1/20th of the screen is common.
-    lv_disp_buf_init(&disp_buf, buf, NULL, LV_HOR_RES_MAX * LV_VER_RES_MAX / 20);
+    lv_disp_buf_init(&disp_buf, buf, NULL, LV_HOR_RES_MAX * LV_VER_RES_MAX / 40); // 1/40th buffer
 
-    /*Initialize the display*/
     lv_disp_drv_t disp_drv;
     lv_disp_drv_init(&disp_drv);
     disp_drv.hor_res = 320;
@@ -116,26 +113,52 @@ void lvglTask(void *pvParameters) {
     disp_drv.buffer = &disp_buf;
     lv_disp_drv_register(&disp_drv);
 
-    /*Initialize the input device driver*/
     lv_indev_drv_t indev_drv;
     lv_indev_drv_init(&indev_drv);
-    indev_drv.type = LV_INDEV_TYPE_ENCODER;  // Or LV_INDEV_TYPE_POINTER, etc.
+    indev_drv.type = LV_INDEV_TYPE_ENCODER;  // Or LV_INDEV_TYPE_POINTER
     indev_drv.read_cb = read_encoder;
     lv_indev_drv_register(&indev_drv);
 
+    // --- Time Display Setup (Four Clocks) ---
 
-    // --- Time Display Setup ---
-    lv_obj_t * time_label = NULL; // Declare the label pointer
+    lv_obj_t * time_labels[4]; // Array to hold the four label pointers
 
     if (xSemaphoreTake(lvglMutex, portMAX_DELAY) == pdTRUE) {
-        time_label = lv_label_create(lv_scr_act(), NULL); // Create the label, parent is screen
-        lv_obj_align(time_label, NULL, LV_ALIGN_CENTER, 0, 0); // Center the label
-        lv_label_set_text(time_label, "00:00:00"); // Initial time value
+        int screen_width = lv_disp_get_hor_res(NULL);
+        int screen_height = lv_disp_get_ver_res(NULL);
+        int container_width = screen_width / 2;
+        int container_height = screen_height / 2;
+
+        lv_obj_t* containers[4]; // Array to hold containers
+
+        for (int i = 0; i < 4; i++) {
+            // 1. Create containers
+            containers[i] = lv_obj_create(lv_scr_act(), NULL);
+            lv_obj_set_size(containers[i], container_width, container_height);
+
+            // 2. Position containers
+            if (i == 0) {
+                lv_obj_align(containers[i], NULL, LV_ALIGN_IN_TOP_LEFT, 0, 0);
+            } else if (i == 1) {
+                lv_obj_align(containers[i], NULL, LV_ALIGN_IN_TOP_RIGHT, 0, 0);
+            } else if (i == 2) {
+                lv_obj_align(containers[i], NULL, LV_ALIGN_IN_BOTTOM_LEFT, 0, 0);
+            } else {
+                lv_obj_align(containers[i], NULL, LV_ALIGN_IN_BOTTOM_RIGHT, 0, 0);
+            }
+             // 3. Create labels *inside* the containers.
+            time_labels[i] = lv_label_create(containers[i], NULL);
+            lv_obj_align(time_labels[i], NULL, LV_ALIGN_CENTER, 0, 0); // Center within container
+            lv_label_set_text(time_labels[i], "00:00:00"); // Initial value
+        }
         xSemaphoreGive(lvglMutex);
     }
 
 
     unsigned long last_update = 0;
+     //Offsets for different time zones (in seconds).  +8 hours = +28800 seconds.
+    long time_offsets[4] = {0, 28800, -18000, 3600}; // UTC, UTC+8, UTC-5, UTC+1
+
 
     while (1) {
         // Handle LVGL tasks.
@@ -148,29 +171,30 @@ void lvglTask(void *pvParameters) {
         if (millis() - last_update >= 1000) {
             last_update = millis();
 
-            // Get the current time (using FreeRTOS's xTaskGetTickCount() for consistency)
             TickType_t ticks = xTaskGetTickCount();
-            unsigned long milliseconds = (ticks * portTICK_PERIOD_MS); // Convert to milliseconds
+            unsigned long milliseconds = (ticks * portTICK_PERIOD_MS);
             unsigned long seconds = milliseconds / 1000;
-            unsigned long h = (seconds / 3600) % 24; // Modulo 24 for hours (0-23)
-            unsigned long m = (seconds % 3600) / 60;
-            unsigned long s = seconds % 60;
+            
+             if (xSemaphoreTake(lvglMutex, portMAX_DELAY) == pdTRUE) { // Protect LVGL access
+                for (int i = 0; i < 4; i++) {
+                    // Calculate time with offset
+                    unsigned long local_seconds = seconds + time_offsets[i];
+                    unsigned long h = (local_seconds / 3600) % 24; // Modulo 24 for hours
+                    unsigned long m = (local_seconds % 3600) / 60;
+                    unsigned long s = local_seconds % 60;
 
-
-            // Format the time string
-            char time_str[9]; // "hh:mm:ss\0"
-            sprintf(time_str, "%02lu:%02lu:%02lu", h, m, s);
-
-            // Update the label text (INSIDE the mutex)
-            if (xSemaphoreTake(lvglMutex, portMAX_DELAY) == pdTRUE) {
-                lv_label_set_text(time_label, time_str);
-                xSemaphoreGive(lvglMutex);
-            }
+                    char time_str[9];
+                    sprintf(time_str, "%02lu:%02lu:%02lu", h, m, s);
+                    lv_label_set_text(time_labels[i], time_str); // Update label
+                }
+                xSemaphoreGive(lvglMutex); // Release the mutex
+             }
         }
 
         vTaskDelay(pdMS_TO_TICKS(20)); // Yield
     }
 }
+
 //*****************************************************************
 //  Task Monitor: Prints task stack information (Optional, but useful)
 //*****************************************************************
