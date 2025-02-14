@@ -1,0 +1,34 @@
+#include <rpcWiFi.h>
+#include <HTTPClient.h>
+
+// 将 "yourNetwork" 替换为 "nubia"
+const char* ssid = "nubia";
+// 将 "yourPassword" 替换为 "22222222"
+const char* password = "22222222";
+
+void setup() {
+  Serial.begin(115200);
+  while (!Serial) {
+    ; // 等待串口连接
+  }
+  Serial.println("Serial connected. Now trying to connect to Wi-Fi...");
+
+  WiFi.begin(ssid, password);
+
+  while (WiFi.status() != WL_CONNECTED) { //检查连接状态
+    delay(500);
+    Serial.println("Connecting..");
+  }
+  Serial.print("Connected to the WiFi network with IP: ");
+  Serial.println(WiFi.localIP());
+}
+
+void loop() {
+  // 可以在这里添加连接成功后需要执行的代码, 比如发送HTTP请求等。这里为了演示只简单地每隔5秒打印一条消息
+  if(WiFi.status() == WL_CONNECTED){
+      Serial.println("Still Connected");
+  } else {
+    Serial.println("Disconnected");
+  }
+  delay(5000);
+}

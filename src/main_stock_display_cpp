@@ -1,11 +1,6 @@
 #include <lvgl.h>
-#include <WiFi.h> 
 #include <TFT_eSPI.h>
 #include <Seeed_Arduino_FreeRTOS.h> // Include FreeRTOS
-
-// Wi-Fi 连接信息
-const char* ssid = "nubia";        // 替换为您的 Wi-Fi 网络名称
-const char* password = "22222222"; // 替换为您的 Wi-Fi 密码
 
 // Use a lower LVGL tick period.  5ms is often too fast.  20ms is usually fine.
 #define LVGL_TICK_PERIOD 20
@@ -294,21 +289,6 @@ void setup() {
   Terminal.println("******************************");
   Terminal.println("        Program start         ");
   Terminal.println("******************************");
-
-
-//   // 连接 Wi-Fi
-//   Terminal.print("Connecting to Wi-Fi: ");
-//   WiFi.begin(ssid, password);
-
-//   // 等待连接成功
-//   while (WiFi.status() != WL_CONNECTED) {
-//     delay(1000);
-//     Terminal.print(".");
-//   }
-
-  // Terminal.println("Connected to Wi-Fi!");
-  // Terminal.print("IP Address: ");
-  // Terminal.println(WiFi.localIP());  // 打印 Wi-Fi IP 地址
 
     // Create mutexes *before* creating tasks.
     tftMutex = xSemaphoreCreateMutex();
